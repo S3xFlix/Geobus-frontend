@@ -6,6 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 mapboxgl.accessToken = 'pk.eyJ1Ijoia2VuZWw1MDciLCJhIjoiY21idWF5djI0MGNyMzJ0cG51ZmxxM3J4aSJ9.u4_5ohkOKmvME4skGDKt6w';
 const API_URL = 'https://geobus-backend.onrender.com/api/rutas';
 const API_HORARIOS = 'https://geobus-backend.onrender.com/api/horarios';
+const API_PARADAS = 'https://geobus-backend.onrender.com/api/paradas';
 
 function App() {
   // Referencias y estado
@@ -34,6 +35,7 @@ function App() {
   const [showHorarios, setShowHorarios] = useState(false);
   const [horarios, setHorarios] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [paradas, setParadas] = useState([]);
 
   // Función para forzar el redimensionamiento del mapa
   const triggerMapResize = () => {
@@ -94,16 +96,14 @@ function App() {
     let distanciaMinima = Infinity;
     let rutaParada = null;
 
-    // Buscar en todas las rutas cargadas
-    Object.entries(todasLasRutas).forEach(([rutaId, rutaData]) => {
-      rutaData.paradas.forEach(parada => {
-        const distancia = calcularDistancia(ubicacion, parada.coordinates);
-        if (distancia < distanciaMinima) {
-          distanciaMinima = distancia;
-          paradaMasCercana = parada;
-          rutaParada = rutas.find(r => r._id === rutaId);
-        }
-      });
+    // Buscar en todas las paradas
+    paradas.forEach(parada => {
+      const distancia = calcularDistancia(ubicacion, parada.ubicacion.coordinates);
+      if (distancia < distanciaMinima) {
+        distanciaMinima = distancia;
+        paradaMasCercana = parada;
+        rutaParada = rutas.find(r => r._id === parada.rutas[0]?._id);
+      }
     });
 
     return {
@@ -115,87 +115,85 @@ function App() {
 
   // Cargar horarios desde la API
   const cargarHorariosAPI = async () => {
-  setLoading(true);
-  try {
-    const response = await fetch(API_HORARIOS); // <-- ya apunta a /api/horarios
-    if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+    setLoading(true);
+    try {
+      const response = await fetch(API_HORARIOS);
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
-    const data = await response.json();
+      const data = await response.json();
 
-    // Agrupar por días
-    const horariosAgrupados = {};
+      // Agrupar por días
+      const horariosAgrupados = {};
 
-    data.forEach((horario) => {
-      const dias = horario.dias?.join(', ') || 'General';
-      if (!horariosAgrupados[dias]) {
-        horariosAgrupados[dias] = [];
-      }
-      horariosAgrupados[dias].push(...horario.salidas);
-    });
+      data.forEach((horario) => {
+        const dias = horario.dias?.join(', ') || 'General';
+        if (!horariosAgrupados[dias]) {
+          horariosAgrupados[dias] = [];
+        }
+        horariosAgrupados[dias].push(...horario.salidas);
+      });
 
-    // Convertir a formato limpio y ordenado
-    const horariosFinales = Object.entries(horariosAgrupados).map(([dia, salidas]) => ({
-      dia,
-      salidas: salidas
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) // orden correcto
-    }));
+      // Convertir a formato limpio y ordenado
+      const horariosFinales = Object.entries(horariosAgrupados).map(([dia, salidas]) => ({
+        dia,
+        salidas: salidas
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+      }));
 
-    setHorarios(horariosFinales);
-    setError(null);
-  } catch (error) {
-    console.error('Error cargando horarios:', error);
-    setError('Error al cargar los horarios');
-    setHorarios([]);
-  } finally {
-    setLoading(false);
-  }
-};
-
+      setHorarios(horariosFinales);
+      setError(null);
+    } catch (error) {
+      console.error('Error cargando horarios:', error);
+      setError('Error al cargar los horarios');
+      setHorarios([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Mostrar horarios de la ruta seleccionada
   const renderHorarios = () => {
-  if (loading) {
-    return (
-      <div className="bg-white p-4 rounded-lg shadow mt-4">
-        <p className="text-gray-600">Cargando horarios...</p>
-      </div>
-    );
-  }
-
-  if (!horarios || horarios.length === 0) {
-    return (
-      <div className="bg-white p-4 rounded-lg shadow mt-4">
-        <p className="text-gray-600">No hay información de horarios disponible.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white p-4 rounded-lg shadow mt-4">
-      <h3 className="font-bold text-lg mb-4 text-orange-600">Horarios Disponibles</h3>
-      {horarios.map((grupoHorario, index) => (
-        <div key={index} className="mb-8">
-          <h4 className="font-semibold text-md mb-2 capitalize">{grupoHorario.dia}</h4>
-          {/* Contenedor scrollable y limitado en altura */}
-          <div
-            className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 overflow-y-auto"
-            style={{ maxHeight: '180px' }}
-          >
-            {grupoHorario.salidas.map((hora, i) => (
-              <span
-                key={i}
-                className="bg-gray-100 px-3 py-1 rounded text-sm text-center hover:bg-orange-100 transition"
-              >
-                🕒 {hora}
-              </span>
-            ))}
-          </div>
+    if (loading) {
+      return (
+        <div className="bg-white p-4 rounded-lg shadow mt-4">
+          <p className="text-gray-600">Cargando horarios...</p>
         </div>
-      ))}
-    </div>
-  );
-};
+      );
+    }
+
+    if (!horarios || horarios.length === 0) {
+      return (
+        <div className="bg-white p-4 rounded-lg shadow mt-4">
+          <p className="text-gray-600">No hay información de horarios disponible.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white p-4 rounded-lg shadow mt-4">
+        <h3 className="font-bold text-lg mb-4 text-orange-600">Horarios Disponibles</h3>
+        {horarios.map((grupoHorario, index) => (
+          <div key={index} className="mb-8">
+            <h4 className="font-semibold text-md mb-2 capitalize">{grupoHorario.dia}</h4>
+            <div
+              className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 overflow-y-auto"
+              style={{ maxHeight: '180px' }}
+            >
+              {grupoHorario.salidas.map((hora, i) => (
+                <span
+                  key={i}
+                  className="bg-gray-100 px-3 py-1 rounded text-sm text-center hover:bg-orange-100 transition"
+                >
+                  🕒 {hora}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   // Mostrar ubicación actual del usuario y ruta más cercana
   const mostrarUbicacionActual = async () => {
@@ -240,9 +238,9 @@ function App() {
 
           // Crear marcador de parada más cercana
           nearestStopMarkerRef.current = new mapboxgl.Marker({ color: 'red' })
-            .setLngLat(parada.coordinates)
+            .setLngLat(parada.ubicacion.coordinates)
             .setPopup(new mapboxgl.Popup({ offset: 25 }).setHTML(
-              `<strong>${parada.name}</strong><br>
+              `<strong>${parada.nombre}</strong><br>
                Ruta: ${ruta.nombre}<br>
                Distancia: ${distancia.toFixed(2)} km`
             ))
@@ -250,7 +248,7 @@ function App() {
 
           // Mostrar información de la parada cercana
           setNearestStopInfo({
-            nombre: parada.name,
+            nombre: parada.nombre,
             ruta: ruta.nombre,
             distancia: distancia.toFixed(2)
           });
@@ -258,7 +256,7 @@ function App() {
           // Ajustar vista para mostrar ambos puntos y la ruta
           const bounds = new mapboxgl.LngLatBounds();
           bounds.extend(coords);
-          bounds.extend(parada.coordinates);
+          bounds.extend(parada.ubicacion.coordinates);
           
           mapRef.current.fitBounds(bounds, {
             padding: {top: 50, bottom: 50, left: 50, right: 50},
@@ -272,7 +270,7 @@ function App() {
               <h3 class="font-bold text-lg mb-2 text-blue-600">Información de ubicación</h3>
               <div class="space-y-2">
                 <p><strong>Ubicación actual:</strong> ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}</p>
-                <p><strong>Parada más cercana:</strong> ${parada.name}</p>
+                <p><strong>Parada más cercana:</strong> ${parada.nombre}</p>
                 <p><strong>Ruta:</strong> ${ruta.nombre}</p>
                 <p><strong>Distancia:</strong> ${distancia.toFixed(2)} km</p>
                 <p class="text-green-600">Se ha cargado automáticamente la ruta ${ruta.nombre}</p>
@@ -361,26 +359,25 @@ function App() {
       
       const data = await res.json();
       
-      if (data?.type === 'FeatureCollection') {
-        const paradasRuta = extraerParadas(data);
-        const lineasRuta = extraerLineasRuta(data);
+      if (data?.geojson?.type === 'FeatureCollection') {
+        const paradasRuta = extraerParadas(data.geojson);
+        const lineasRuta = extraerLineasRuta(data.geojson);
         
         setTodasLasRutas(prev => ({
           ...prev,
           [rutaId]: {
-            geojson: data,
+            geojson: data.geojson,
             paradas: paradasRuta,
-            lineas: lineasRuta
+            lineas: lineasRuta,
+            nombre: data.nombre
           }
         }));
         
-        // Cargar horarios después de cargar la ruta
-        await cargarHorariosAPI(rutaId);
-        
         return { 
-          geojson: data, 
+          geojson: data.geojson, 
           paradas: paradasRuta, 
-          lineas: lineasRuta
+          lineas: lineasRuta,
+          nombre: data.nombre
         };
       }
       throw new Error('Formato de datos inválido');
@@ -552,7 +549,7 @@ function App() {
         }
         
         // Crear contenido del popup con información de la parada
-        let popupContent = `<strong>${parada.name}</strong><br>Ruta: ${rutaId}`;
+        let popupContent = `<strong>${parada.name}</strong><br>Ruta: ${rutaData.nombre || rutaId}`;
         
         // Añadir información de horarios si está disponible
         if (horarios.length > 0) {
@@ -999,21 +996,31 @@ function App() {
     };
   }, []);
 
-  // Cargar lista de rutas
+  // Cargar lista de rutas y paradas
   useEffect(() => {
-    const cargarRutas = async () => {
+    const cargarDatosIniciales = async () => {
       try {
-        const res = await fetch(API_URL);
-        const data = await res.json();
-        setRutas(Array.isArray(data) ? data : []);
+        // Cargar rutas
+        const resRutas = await fetch(API_URL);
+        const dataRutas = await resRutas.json();
+        setRutas(Array.isArray(dataRutas) ? dataRutas : []);
+
+        // Cargar paradas
+        const resParadas = await fetch(API_PARADAS);
+        const dataParadas = await resParadas.json();
+        setParadas(Array.isArray(dataParadas) ? dataParadas : []);
+
+        // Cargar horarios
+        await cargarHorariosAPI();
+
         setError(null);
       } catch (err) {
-        console.error('Error cargando rutas:', err);
-        setError('Error al cargar la lista de rutas');
+        console.error('Error cargando datos iniciales:', err);
+        setError('Error al cargar los datos iniciales');
       }
     };
 
-    cargarRutas();
+    cargarDatosIniciales();
   }, []);
 
   return (
